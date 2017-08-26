@@ -5,6 +5,7 @@ import (
     "log"
     "net/http"
     "strings"
+    "strconv"
 
     "github.com/zmb3/spotify"
 )
@@ -25,7 +26,7 @@ var html = `
 `
 
 var (
-    auth  = spotify.NewAuthenticator(redirectURI, spotify.ScopeUserReadCurrentlyPlaying, spotify.ScopeUserReadPlaybackState, spotify.ScopeUserModifyPlaybackState)
+    auth  = spotify.NewAuthenticator(redirectURI, spotify.ScopeUserReadCurrentlyPlaying, spotify.ScopeUserReadPlaybackState, spotify.ScopeUserModifyPlaybackState, spotify.ScopeUserLibraryRead)
     ch    = make(chan *spotify.Client)
     state = "abc123"
 )
@@ -58,8 +59,40 @@ func main() {
             log.Print(err)
         }
 
+        //********TRACK INFO********//
+        // TODO remove the /player page and move this stuff somewhere else without breaking everything
+
+        var info *spotify.SavedTrackPage
+        var tracks []spotify.SavedTrack
+        var limit = 50
+        var offset = 0
+        var songs []string
+        var totalDuration = 0
+
+        for {
+            opt := &spotify.Options {Limit: &limit, Offset: &offset}
+            info, err = client.CurrentUsersTracksOpt(opt)
+            if err != nil {
+                log.Print(err)
+            }
+            if len(info.Tracks) == 0 {
+                break
+            }
+            tracks = append(tracks, info.Tracks...)
+            offset += 50
+        }
+
+        for _, song := range tracks {
+            // TODO convert this to a html list
+            songs = append(songs, song.Name + "    " + strconv.Itoa(song.Duration) + "<br/>")
+            // TODO convert time to minutes, hours, and days
+            totalDuration += song.Duration
+        }
+
+        //******END TRACK INFO******//
+        
         w.Header().Set("Content-Type", "text/html")
-        fmt.Fprint(w, html)
+        fmt.Fprint(w, html, songs, "Total Duration is " + strconv.Itoa(totalDuration) + "<br/>")
     })
 
     http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
