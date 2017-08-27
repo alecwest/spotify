@@ -4,7 +4,6 @@ import (
     "fmt"
     "log"
     "net/http"
-    "strings"
     "strconv"
 
     "github.com/zmb3/spotify"
@@ -16,13 +15,9 @@ import (
 const redirectURI = "http://localhost:8080/callback"
 
 var html = `
-<br/>
-<a href="/player/play">Play</a><br/>
-<a href="/player/pause">Pause</a><br/>
-<a href="/player/next">Next track</a><br/>
-<a href="/player/previous">Previous Track</a><br/>
-<a href="/player/shuffle">Shuffle</a><br/>
-
+<form action="/library">
+    <input type="submit" value="View Library" />
+</form>
 `
 
 var (
@@ -38,26 +33,9 @@ func main() {
 
     http.HandleFunc("/callback", completeAuth)
 
-    http.HandleFunc("/player/", func(w http.ResponseWriter, r *http.Request) {
-        action := strings.TrimPrefix(r.URL.Path, "/player/")
-        fmt.Println("Got request for:", action)
+    http.HandleFunc("/library", func(w http.ResponseWriter, r *http.Request) {
+        log.Println("Got request for:", r.URL.String())
         var err error
-        switch action {
-        case "play":
-            err = client.Play()
-        case "pause":
-            err = client.Pause()
-        case "next":
-            err = client.Next()
-        case "previous":
-            err = client.Previous()
-        case "shuffle":
-            playerState.ShuffleState = !playerState.ShuffleState
-            err = client.Shuffle(playerState.ShuffleState)
-        }
-        if err != nil {
-            log.Print(err)
-        }
 
         //********TRACK INFO********//
         // TODO remove the /player page and move this stuff somewhere else without breaking everything
@@ -66,8 +44,9 @@ func main() {
         var tracks []spotify.SavedTrack
         var limit = 50
         var offset = 0
-        var songs []string
-        var totalDuration = 0
+        var songs = `<table><tr><th align='left'>Song</th><th>Duration</th></tr>`
+        var numSongs = 0
+        var totalDuration = 0.0
 
         for {
             opt := &spotify.Options {Limit: &limit, Offset: &offset}
@@ -83,16 +62,17 @@ func main() {
         }
 
         for _, song := range tracks {
-            // TODO convert this to a html list
-            songs = append(songs, song.Name + "    " + strconv.Itoa(song.Duration) + "<br/>")
+            songs += "<tr><td>" + song.Name + "</td><td>" + MillisecondsToTime(int(song.Duration)) + "</td></tr>"
             // TODO convert time to minutes, hours, and days
-            totalDuration += song.Duration
+            totalDuration += float64(song.Duration)
+            numSongs++
         }
+        songs = fmt.Sprintf("<table><tr><th>Number of Songs</th><td>%d</td></table>%s<tr><td>Total Duration</td><td>%s</td></table>", numSongs, songs, MillisecondsToTime(int(totalDuration)))
 
         //******END TRACK INFO******//
         
         w.Header().Set("Content-Type", "text/html")
-        fmt.Fprint(w, html, songs, "Total Duration is " + strconv.Itoa(totalDuration) + "<br/>")
+        fmt.Fprint(w, html, songs)
     })
 
     http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -139,4 +119,10 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Content-Type", "text/html")
     fmt.Fprintf(w, "Login Completed!"+html)
     ch <- &client
+}
+
+func MillisecondsToTime(ms int) string {
+    seconds := int((float64(ms) / 1000.0) + 0.5)
+    time := strconv.Itoa(seconds / 60) + ":" + fmt.Sprintf("%02d", seconds % 60)
+    return time
 }
